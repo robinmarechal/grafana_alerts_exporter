@@ -9,6 +9,6 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY grafana_alerts_exporter.py /usr/src/app
 
 EXPOSE 5555
-ENV GRAFANA_API_URL=http://grafana:3000 LISTEN_ADDRESS=:5555 DEBUG=0
+ENV LISTEN_ADDRESS=:5555 DEBUG=0 CONFIG_FILE="/etc/grafana_alerts_exporter/grafana_alerts_exporter.yml"
 
 ENTRYPOINT [ "python", "-u", "./grafana_alerts_exporter.py" ]

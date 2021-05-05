@@ -192,17 +192,17 @@ def parse_args():
         '--web.listen-address',
         metavar='listen_address',
         required=False,
-        type=int,
         help='Listen to this address and port',
-        default=int(os.environ.get('LISTEN_ADDRESS', ':5555'))
+        default=os.environ.get('LISTEN_ADDRESS', ':5555')
     )
     parser.add_argument(
         '--debug',
         dest='debug',
         required=False,
+        type=bool
         action='store_true',
-        help='Allow connection to insecure Grafana API',
-        default=False
+        help='Enable debug',
+        default=bool(os.environ.get("DEBUG", 0))
     )
     return parser.parse_args()
 
