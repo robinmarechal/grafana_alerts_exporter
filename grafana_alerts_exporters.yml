@@ -1,0 +1,9 @@
+global:
+  grafana:
+    api:
+      url: http://grafana:3000/api
+      params:
+        # - key: value
+      insecure: false
+      headers:
+        Authorization: "Bearer eyJrIjoiZzB4ejF0REVNdkRxSzZyQTRGSWVERUc3cnpid2tMVFMiLCJuIjoiZXpmemUiLCJpZCI6MX0="
