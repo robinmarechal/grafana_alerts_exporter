@@ -6,4 +6,4 @@ global:
         # - key: value
       insecure: false
       headers:
-        Authorization: "Bearer eyJrIjoiZzB4ejF0REVNdkRxSzZyQTRGSWVERUc3cnpid2tMVFMiLCJuIjoiZXpmemUiLCJpZCI6MX0="
+        Authorization: "Bearer xxxxxxxx"

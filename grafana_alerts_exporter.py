@@ -1,218 +1,232 @@
 #!/usr/bin/python
 
-import re
-import time
-import requests
 import argparse
-from pprint import pprint
-import yaml
-
 import os
-from sys import exit
-from prometheus_client import Summary, make_wsgi_app
-from prometheus_client.core import GaugeMetricFamily, REGISTRY
+import re
+import sys
+import time
+from pprint import pprint
 from wsgiref.simple_server import make_server
+import datetime
 
-DEBUG = int(os.environ.get('DEBUG', '0'))
 
-COLLECTION_TIME = Summary('grafana_alerts_collector_collect_seconds',
-                          'Time spent to collect metrics from Grafana Alerts')
+import requests
+import yaml
+from prometheus_client import REGISTRY, Gauge, Summary, Enum, make_wsgi_app
+from prometheus_client.core import GaugeMetricFamily
+
+DEBUG = int(os.environ.get("DEBUG", "0"))
+
+COMMON_LABELS = ["alert_id", "alert_name", "dashboard_url"]
+
+STATE_OK = "ok"
+STATE_PENDING = "pending"
+STATE_ALERTING = "alerting"
+
+STATES = {STATE_ALERTING: 2, STATE_PENDING: 1, STATE_OK: 0}
+
+COLLECTION_TIME = Summary(
+    "grafana_alerts_collector_collect_seconds",
+    "Time spent to collect metrics from Grafana Alerts",
+)
+
+METRICS = {
+    "alert_state": {
+        "name": "grafana_alerts_alert_state",
+        "documentation": "Alert state value. 0 = ok, 1 = pending, 2 = alerting",
+        "labelnames": COMMON_LABELS,
+    },
+    "new_state_date": {
+        "name": "grafana_alerts_new_state_date",
+        "documentation": "Date of last status update",
+        "labelnames": COMMON_LABELS,
+    },
+    "execution_error": {
+        "name": "grafana_alerts_execution_error",
+        "documentation": "1 if the execution of the alert rule resulted in an error",
+        "labelnames": COMMON_LABELS + ["error"],
+    },
+    "alert_value": {
+        "name": "grafana_alerts_alert_value",
+        "documentation": "Alert state value. 0 = ok, 1 = alerting, 2 = pending",
+        "labelnames": COMMON_LABELS + ["metric"],
+    },
+    "state_changes_total": {
+        "name": "grafana_alerts_state_changes_total",
+        "documentation": "Total times this alert state has changed",
+        "labelnames": COMMON_LABELS,
+    },
+    "silenced": {
+        "name": "grafana_alerts_silence",
+        "documentation": "Whether the alert is being silent (1) or no (0)",
+        "labelnames": COMMON_LABELS,
+    },
+}
+
+
+class AlertDetail(object):
+    def __init__(self, basics, json):
+        self.id = json["Id"]
+        self.name = json["Name"]
+        self.state = json["State"]
+        self.silenced = json["Silenced"]
+        self.new_state_date = json["NewStateDate"]
+        self.state_changes = json["StateChanges"]
+        self.error = json["ExecutionError"].strip()
+        self.data = json["EvalData"]
+
+        self.url = basics["url"]
+
+        self.is_error =  self.error != ""
+        self.numeric_state = STATES[self.state]
+
+
+class AlertMatch(object):
+    def __init__(self, json):
+        self.metric = json["metric"]
+        self.tags = json["tags"]
+        self.value = json["value"]
 
 
 class GrafanaCollector(object):
-    # The build statuses we want to export about.
-    statuses = ["lastBuild", "lastCompletedBuild", "lastFailedBuild",
-                "lastStableBuild", "lastSuccessfulBuild", "lastUnstableBuild",
-                "lastUnsuccessfulBuild"]
-
-    def __init__(cfg, debug):
+    def __init__(self, cfg, debug):
         self._cfg = cfg
         self._debug = debug
-        
+
         apiCfg = config(cfg, "global.grafana.api")
         self._url = apiCfg["url"].rstrip("/")
         self._params = apiCfg["params"]
         self._headers = apiCfg["headers"]
         self._insecure = apiCfg["insecure"]
 
+        self._headers["content-type"] = "application/json"
+
+    @COLLECTION_TIME.time()
     def collect(self):
-        start = time.time()
-
         # Request data from Grafana
-        jobs = self._request_data()
+        alerts = self._fetch_all_alerts()
+        return self._handle_alerts(alerts)
 
-        self._setup_empty_prometheus_metrics()
+    def _get_data(self, response):
+        if DEBUG:
+            pprint(response.text)
 
-        for job in jobs:
-            name = job['fullName']
-            if DEBUG:
-                print("Found Job: {}".format(name))
-                pprint(job)
-            self._get_metrics(name, job)
+        if response.status_code != 200:
+            raise Exception(
+                "Call to url %s failed with status: %s"
+                % (response.url, response.status_code)
+            )
 
-        for status in self.statuses:
-            for metric in self._prometheus_metrics[status].values():
-                yield metric
+        result = response.json()
 
-        duration = time.time() - start
-        COLLECTION_TIME.observe(duration)
+        if DEBUG:
+            pprint(result)
 
-    def _request_data(self):
-        # Request exactly the information we need from Grafana
-        url = '{0}/alerts'.format(self._target)
-        jobs = "[fullName,number,timestamp,duration,actions[queuingDurationMillis,totalDurationMillis," \
-               "skipCount,failCount,totalCount,passCount]]"
-        tree = 'jobs[fullName,url,{0}]'.format(
-            ','.join([s + jobs for s in self.statuses]))
-        params = {
-            'tree': tree,
-        }
+        return result
 
-        def parsejobs(myurl):
-            # params = tree: jobs[name,lastBuild[number,timestamp,duration,actions[queuingDurationMillis...
-            if self._user and self._password:
-                response = requests.get(myurl, params=params, auth=(
-                    self._user, self._password), verify=(not self._insecure))
+    def _fetch(self, url):
+        response = requests.get(
+            url, headers=self._headers, params=self._params, verify=(not self._insecure)
+        )
+
+        return self._get_data(response)
+
+    def _fetch_all_alerts(self):
+        url = "{0}/alerts".format(self._url)
+        return self._fetch(url)
+
+    def _fetch_alert_details(self, alert_id):
+        url = "{0}/alerts/{1}".format(self._url, alert_id)
+        return self._fetch(url)
+
+    def _parse_date(self, datestr):
+        return datetime.datetime.strptime(datestr, "%Y-%m-%dT%H:%M:%SZ")
+
+    def _init_gauge(self, metric, add_labels=[]):
+        template = METRICS[metric]
+        return GaugeMetricFamily(
+            name=template["name"],
+            documentation=template["documentation"],
+            labels=template["labelnames"] + add_labels,
+        )
+
+    def _handle_alerts(self, all_alerts):
+        m_state = self._init_gauge("alert_state")
+        m_changes = self._init_gauge("state_changes_total")
+        m_date = self._init_gauge("new_state_date")
+        m_error = self._init_gauge("execution_error")
+        m_value = self._init_gauge("alert_value")
+        m_silenced = self._init_gauge("silenced")
+
+        for basics in all_alerts:
+            details_json = self._fetch_alert_details(basics["id"])
+            alert = AlertDetail(basics, details_json)
+
+            labels = [str(alert.id), alert.name, alert.url]
+
+            m_state.add_metric(labels, alert.numeric_state)
+            m_changes.add_metric(labels, alert.state_changes)
+            m_silenced.add_metric(labels, int(alert.silenced))
+
+            date = self._parse_date(alert.new_state_date)
+            m_date.add_metric(labels, date.timestamp())
+
+            if alert.is_error:
+                m_error.add_metric(labels + [alert.error], 1)
             else:
-                response = requests.get(
-                    myurl, params=params, verify=(not self._insecure))
-            if DEBUG:
-                pprint(response.text)
-            if response.status_code != requests.codes.ok:
-                raise Exception("Call to url %s failed with status: %s" % (
-                    myurl, response.status_code))
-            result = response.json()
-            if DEBUG:
-                pprint(result)
+                m_error.add_metric(labels + [""], 0)
 
-            jobs = []
-            for job in result['jobs']:
-                if job['_class'] == 'com.cloudbees.hudson.plugins.folder.Folder' or \
-                   job['_class'] == 'grafana.branch.OrganizationFolder' or \
-                   job['_class'] == 'org.grafanaci.plugins.workflow.multibranch.WorkflowMultiBranchProject':
-                    jobs += parsejobs(job['url'] + '/api/json')
-                else:
-                    jobs.append(job)
-            return jobs
+            # alert value
+            if alert.data != None and "evalMatches" in alert.data:
+                for json in alert.data["evalMatches"]:
+                    m = AlertMatch(json)
+                    sample_labels = labels + [m.metric]
 
-        return parsejobs(url)
+                    m_value.add_metric(sample_labels, m.value)
 
-    def _setup_empty_prometheus_metrics(self):
-        # The metrics we want to export.
-        self._prometheus_metrics = {}
-        for status in self.statuses:
-            snake_case = re.sub('([A-Z])', '_\\1', status).lower()
-            self._prometheus_metrics[status] = {
-                'number':
-                    GaugeMetricFamily('grafana_job_{0}'.format(snake_case),
-                                      'Grafana build number for {0}'.format(status), labels=["jobname"]),
-                'duration':
-                    GaugeMetricFamily('grafana_job_{0}_duration_seconds'.format(snake_case),
-                                      'Grafana build duration in seconds for {0}'.format(status), labels=["jobname"]),
-                'timestamp':
-                    GaugeMetricFamily('grafana_job_{0}_timestamp_seconds'.format(snake_case),
-                                      'Grafana build timestamp in unixtime for {0}'.format(status), labels=["jobname"]),
-                'queuingDurationMillis':
-                    GaugeMetricFamily('grafana_job_{0}_queuing_duration_seconds'.format(snake_case),
-                                      'Grafana build queuing duration in seconds for {0}'.format(
-                                          status),
-                                      labels=["jobname"]),
-                'totalDurationMillis':
-                    GaugeMetricFamily('grafana_job_{0}_total_duration_seconds'.format(snake_case),
-                                      'Grafana build total duration in seconds for {0}'.format(status), labels=["jobname"]),
-                'skipCount':
-                    GaugeMetricFamily('grafana_job_{0}_skip_count'.format(snake_case),
-                                      'Grafana build skip counts for {0}'.format(status), labels=["jobname"]),
-                'failCount':
-                    GaugeMetricFamily('grafana_job_{0}_fail_count'.format(snake_case),
-                                      'Grafana build fail counts for {0}'.format(status), labels=["jobname"]),
-                'totalCount':
-                    GaugeMetricFamily('grafana_job_{0}_total_count'.format(snake_case),
-                                      'Grafana build total counts for {0}'.format(status), labels=["jobname"]),
-                'passCount':
-                    GaugeMetricFamily('grafana_job_{0}_pass_count'.format(snake_case),
-                                      'Grafana build pass counts for {0}'.format(status), labels=["jobname"]),
-            }
-
-    def _get_metrics(self, name, job):
-        for status in self.statuses:
-            if status in job.keys():
-                status_data = job[status] or {}
-                self._add_data_to_prometheus_structure(
-                    status, status_data, job, name)
-
-    def _add_data_to_prometheus_structure(self, status, status_data, job, name):
-        # If there's a null result, we want to pass.
-        if status_data.get('duration', 0):
-            self._prometheus_metrics[status]['duration'].add_metric(
-                [name], status_data.get('duration') / 1000.0)
-        if status_data.get('timestamp', 0):
-            self._prometheus_metrics[status]['timestamp'].add_metric(
-                [name], status_data.get('timestamp') / 1000.0)
-        if status_data.get('number', 0):
-            self._prometheus_metrics[status]['number'].add_metric(
-                [name], status_data.get('number'))
-        actions_metrics = status_data.get('actions', [{}])
-        for metric in actions_metrics:
-            if metric.get('queuingDurationMillis', False):
-                self._prometheus_metrics[status]['queuingDurationMillis'].add_metric(
-                    [name], metric.get('queuingDurationMillis') / 1000.0)
-            if metric.get('totalDurationMillis', False):
-                self._prometheus_metrics[status]['totalDurationMillis'].add_metric(
-                    [name], metric.get('totalDurationMillis') / 1000.0)
-            if metric.get('skipCount', False):
-                self._prometheus_metrics[status]['skipCount'].add_metric(
-                    [name], metric.get('skipCount'))
-            if metric.get('failCount', False):
-                self._prometheus_metrics[status]['failCount'].add_metric(
-                    [name], metric.get('failCount'))
-            if metric.get('totalCount', False):
-                self._prometheus_metrics[status]['totalCount'].add_metric(
-                    [name], metric.get('totalCount'))
-                # Calculate passCount by subtracting fails and skips from totalCount
-                passcount = metric.get(
-                    'totalCount') - metric.get('failCount') - metric.get('skipCount')
-                self._prometheus_metrics[status]['passCount'].add_metric(
-                    [name], passcount)
+        yield m_state
+        yield m_changes
+        yield m_date
+        yield m_error
+        yield m_value
+        yield m_silenced
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='grafana exporter args grafana address and port'
+        description="grafana exporter args grafana address and port"
     )
 
     parser.add_argument(
-        '--config.file',
-        metavar='config_file',
-        required=True,
-        help='Path to config file',
-        default=os.environ.get('CONFIG_FILE')
+        "--config.file",
+        dest="config_file",
+        required=False,
+        help="Path to config file",
+        default=os.environ.get("CONFIG_FILE"),
     )
     parser.add_argument(
-        '--web.listen-address',
-        metavar='listen_address',
+        "--web.listen-address",
+        dest="listen_address",
         required=False,
-        help='Listen to this address and port',
-        default=os.environ.get('LISTEN_ADDRESS', ':5555')
+        help="Listen to this address and port",
+        default=os.environ.get("LISTEN_ADDRESS", ":5555"),
     )
     parser.add_argument(
-        '--debug',
-        dest='debug',
+        "--debug",
+        dest="debug",
         required=False,
-        type=bool
-        action='store_true',
-        help='Enable debug',
-        default=bool(os.environ.get("DEBUG", 0))
+        action="store_true",
+        help="Enable debug",
+        default=os.environ.get("DEBUG", 0) == 1,
     )
     return parser.parse_args()
 
 
 def load_cfg(args):
-    with open(args.config_file, 'r') as stream:
+    with open(args.config_file, "r") as stream:
         try:
             return yaml.safe_load(stream)
-        except:
-            yaml.YAMLError as exc:
+        except yaml.YAMLError as exc:
             print(exc)
 
 
@@ -247,13 +261,12 @@ def main():
         app = make_wsgi_app()
         httpd = make_server(address, int(port), app)
 
-        print("Polling {}. Serving at {}:{}".format(
-            grafana_address, address, port))
+        print("Polling {}. Serving at {}:{}".format(grafana_address, address, port))
 
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("Interrupted")
-        exit(0)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
