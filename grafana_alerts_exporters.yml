@@ -6,4 +6,5 @@ global:
         # - key: value
       insecure: false
       headers:
-        Authorization: "Bearer xxxxxxxx"
+        # for example: API Key
+        #Authorization: "Bearer xxxxxxxx"

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import argparse
 import os
@@ -77,7 +77,7 @@ class AlertDetail(object):
 
         self.url = basics["url"]
 
-        self.is_error =  self.error != ""
+        self.is_error = self.error != ""
         self.numeric_state = STATES[self.state]
 
 
@@ -152,6 +152,7 @@ class GrafanaCollector(object):
 
     def _handle_alerts(self, all_alerts):
         m_state = self._init_gauge("alert_state")
+        m_state = self._init_gauge("alert_state")
         m_changes = self._init_gauge("state_changes_total")
         m_date = self._init_gauge("new_state_date")
         m_error = self._init_gauge("execution_error")
@@ -193,9 +194,7 @@ class GrafanaCollector(object):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="grafana exporter args grafana address and port"
-    )
+    parser = argparse.ArgumentParser(description="Grafana Alerts Exporter")
 
     parser.add_argument(
         "--config.file",
