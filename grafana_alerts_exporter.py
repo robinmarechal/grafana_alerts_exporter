@@ -208,7 +208,7 @@ def parse_args():
         dest="listen_address",
         required=False,
         help="Listen to this address and port",
-        default=os.environ.get("LISTEN_ADDRESS", ":5555"),
+        default=os.environ.get("LISTEN_ADDRESS", ":9823"),
     )
     parser.add_argument(
         "--debug",
