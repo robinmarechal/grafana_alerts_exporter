@@ -21,7 +21,7 @@ Run
 docker run -d \
     --name grafana_alerts_exporter \
     -p 9823:9823 \
-    -v "$PWD/grafana_alerts_exporter.yml:/usr/share/exporter/grafana_alerts_exporter.yml \
+    -v "$PWD/grafana_alerts_exporter.yml":/usr/share/exporter/grafana_alerts_exporter.yml \
     grafana_alerts_exporter
 ```
 
