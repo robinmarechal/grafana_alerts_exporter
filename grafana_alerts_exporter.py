@@ -63,6 +63,12 @@ METRICS = {
     },
 }
 
+def dictionaryGet(dico, key, defaultValue = None): 
+    if key in dico:
+        return dico[key]
+
+    return defaultValue
+
 
 class AlertDetail(object):
     def __init__(self, basics, json):
@@ -95,9 +101,9 @@ class GrafanaCollector(object):
 
         apiCfg = config(cfg, "global.grafana.api")
         self._url = apiCfg["url"].rstrip("/")
-        self._params = apiCfg["params"]
-        self._headers = apiCfg["headers"]
-        self._insecure = apiCfg["insecure"]
+        self._params = dictionaryGet(apiCfg, "params", {})
+        self._headers = dictionaryGet(apiCfg, "headers", {})
+        self._insecure = dictionaryGet(apiCfg, "insecure", False)
 
         self._headers["content-type"] = "application/json"
 
