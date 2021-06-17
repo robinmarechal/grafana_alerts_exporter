@@ -201,7 +201,7 @@ def parse_args():
         dest="config_file",
         required=False,
         help="Path to config file",
-        default=os.environ.get("CONFIG_FILE"),
+        default=os.environ.get("CONFIG_FILE", "grafana_alerts_exporter.yml"),
     )
     parser.add_argument(
         "--web.listen-address",
