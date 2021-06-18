@@ -16,7 +16,7 @@ tag:
 	@git push
 	@echo "Committed and pushed to current branch."
 	@git tag v$(VERSION)
-	@git push v$(VERSION)
+	@git push --tags
 	@echo "Created tag v$(VERSION)"
 
 clean: 
