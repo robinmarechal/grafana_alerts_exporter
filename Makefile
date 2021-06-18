@@ -10,18 +10,22 @@ release: tag
 	@echo "Created file $(PROJECT)-$(VERSION).zip"
 	@echo "Release ready: v$(VERSION)"
 
-tag: 
-	@git add .
-	@git commit -m"Tagging v$(VERSION)"
-	@git push
-	@echo "Committed and pushed to current branch."
+tag: commit
 	@git tag v$(VERSION)
 	@git push --tags
 	@echo "Created tag v$(VERSION)"
+
+commit:
+	
+	@git add .
+	@git commit -m"Committed v$(VERSION)"
+	@git push
+	@echo "Committed and pushed to current branch."
+
 
 clean: 
 	@rm -vf grafana_alerts_exporter-*.tar.gz
 	@rm -vf grafana_alerts_exporter-*.zip
 	@echo "Cleaned project"
 
-.PHONY: release clean tag
+.PHONY: release clean tag commit
