@@ -23,12 +23,15 @@ tag: commit
 	@echo "Created tag v$(VERSION)"
 
 commit:
+	echo $(GIT_STATUS_COMMIT)
 ifeq ($(GIT_STATUS_COMMIT),1)
 	@git add .
 	@git commit -m"Committed v$(VERSION)"
 endif
 
 push: 
+	echo $(GIT_STATUS_PUSH)
+	echo $(GIT_STATUS_COMMIT)
 ifeq ($(GIT_STATUS_PUSH),1)
 	@git push
 	@echo "Committed and pushed to current branch."
