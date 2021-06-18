@@ -9,7 +9,7 @@ test:
 	echo $(GIT_STATUS_COMMIT)
 	echo $(GIT_STATUS_PUSH)
 
-release: tag
+release: push
 	@echo "releasing v$(VERSION)..."
 	@tar -zcf $(PROJECT)-$(VERSION).tar.gz $(INCLUDED_FILES)
 	@echo "Created file $(PROJECT)-$(VERSION).tar.gz"
@@ -32,15 +32,10 @@ else ifeq ($(GIT_STATUS_COMMIT),1)
 	@echo "Committed and pushed to current branch."
 endif
 
-tag: push
-	@git tag v$(VERSION)
-	@git push --tags
-	@echo "Created tag v$(VERSION)"
-
 
 clean: 
 	@rm -vf grafana_alerts_exporter-*.tar.gz
 	@rm -vf grafana_alerts_exporter-*.zip
 	@echo "Cleaned project"
 
-.PHONY: release clean tag commit push
+.PHONY: release clean commit push
