@@ -3,12 +3,16 @@ INCLUDED_FILES = Dockerfile README.md  grafana_alerts_exporter.py grafana_alerts
 PROJECT = grafana_alerts_exporter
 
 release: tag
-	echo "releasing v$(VERSION)"
-	tar -zcvf $(PROJECT)-$(VERSION).tar.gz $(INCLUDED_FILES)
-	zip -r $(PROJECT)-$(VERSION).zip $(INCLUDED_FILES)
+	@echo "releasing v$(VERSION)..."
+	@tar -zcf $(PROJECT)-$(VERSION).tar.gz $(INCLUDED_FILES)
+	@echo "Created file $(PROJECT)-$(VERSION).tar.gz"
+	@zip -rq $(PROJECT)-$(VERSION).zip $(INCLUDED_FILES)
+	@echo "Created file $(PROJECT)-$(VERSION).zip"
+	@echo "Release ready: v$(VERSION)"
 
 clean: 
-	rm -f grafana_alerts_exporter-*.tar.gz
-	rm -f grafana_alerts_exporter-*.zip
+	@rm -vf grafana_alerts_exporter-*.tar.gz
+	@rm -vf grafana_alerts_exporter-*.zip
+	@echo "Cleaned project"
 
 .PHONY: release clean tag
