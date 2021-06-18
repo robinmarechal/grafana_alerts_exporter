@@ -17,21 +17,13 @@ release: tag
 	@echo "Created file $(PROJECT)-$(VERSION).zip"
 	@echo "Release ready: v$(VERSION)"
 
-tag: commit
-	@git tag v$(VERSION)
-	@git push --tags
-	@echo "Created tag v$(VERSION)"
-
 commit:
-	echo $(GIT_STATUS_COMMIT)
 ifeq ($(GIT_STATUS_COMMIT),1)
 	@git add .
 	@git commit -m"Committed v$(VERSION)"
 endif
 
-push: 
-	echo $(GIT_STATUS_PUSH)
-	echo $(GIT_STATUS_COMMIT)
+push: commit
 ifeq ($(GIT_STATUS_PUSH),1)
 	@git push
 	@echo "Committed and pushed to current branch."
@@ -40,10 +32,15 @@ else ifeq ($(GIT_STATUS_COMMIT),1)
 	@echo "Committed and pushed to current branch."
 endif
 
+tag: push
+	@git tag v$(VERSION)
+	@git push --tags
+	@echo "Created tag v$(VERSION)"
+
 
 clean: 
 	@rm -vf grafana_alerts_exporter-*.tar.gz
 	@rm -vf grafana_alerts_exporter-*.zip
 	@echo "Cleaned project"
 
-.PHONY: release clean tag commit
+.PHONY: release clean tag commit push
