@@ -2,12 +2,10 @@
 
 import argparse
 import os
-import re
 import sys
-import time
 from pprint import pprint
 from wsgiref.simple_server import make_server
-import datetime
+from dateutil import parser
 
 
 import requests
@@ -146,7 +144,8 @@ class GrafanaCollector(object):
         return self._fetch(url)
 
     def _parse_date(self, datestr):
-        return datetime.datetime.strptime(datestr, "%Y-%m-%dT%H:%M:%SZ")
+        #return datetime.datetime.strptime(datestr, "%Y-%m-%dT%H:%M:%SZ")
+        return parser.parse(datestr)
 
     def _init_gauge(self, metric, add_labels=[]):
         template = METRICS[metric]

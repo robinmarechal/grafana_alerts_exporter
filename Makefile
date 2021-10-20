@@ -5,6 +5,8 @@ PROJECT = grafana_alerts_exporter
 GIT_STATUS_COMMIT = $(shell test $$(git status | grep 'nothing to commit' | wc -l) = 1 && echo 0 || echo 1)
 GIT_STATUS_PUSH = $(shell test $$(git status | grep 'Your branch is up to date' | wc -l) = 1 && echo 0 || echo 1)
 
+
+
 test: 
 	echo $(GIT_STATUS_COMMIT)
 	echo $(GIT_STATUS_PUSH)
@@ -43,4 +45,7 @@ clean:
 	@rm -vf grafana_alerts_exporter-*.zip
 	@echo "Cleaned project"
 
-.PHONY: release clean tag commit push
+resolve-dependencies:
+	@python3 -m pip install -r requirements.txt
+
+.PHONY: release clean tag commit push resolve-dependencies
