@@ -11,6 +11,9 @@ test:
 	@echo $(GIT_STATUS_COMMIT)
 	@echo $(GIT_STATUS_PUSH)
 
+# To release : 
+#	1. Increment version in file VERSION
+#	2. Simply run `make release`
 release: tag
 	@echo "releasing v$(VERSION)..."
 	@tar -zcf $(PROJECT)-$(VERSION).tar.gz $(INCLUDED_FILES)
