@@ -8,8 +8,8 @@ GIT_STATUS_PUSH = $(shell test $$(git status | grep 'Your branch is up to date' 
 
 
 test: 
-	echo $(GIT_STATUS_COMMIT)
-	echo $(GIT_STATUS_PUSH)
+	@echo $(GIT_STATUS_COMMIT)
+	@echo $(GIT_STATUS_PUSH)
 
 release: tag
 	@echo "releasing v$(VERSION)..."
